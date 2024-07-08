@@ -1,0 +1,374 @@
+# # backend/app.py
+# from flask import Flask, request, jsonify
+# from flask_cors import CORS
+# import cv2
+# import numpy as np
+
+# app = Flask(__name__)
+# CORS(app)
+
+# def detect_emotion(frame):
+#     # Placeholder for you r emotion detection logic
+#     print(frame)
+#     return "happy"
+
+# def transcribe_audio(audio_data):
+#     # Placeholder for your audio transcription logic
+#     return "Hello, world!"
+
+# def detect_audio_emotion(transcription):
+#     # Placeholder for your audio emotion detection logic
+#     return "neutral"
+
+# @app.route('/emotion-detection', methods=['POST'])
+# def emotion_detection():
+#     if 'frame' in request.files:
+#         file = request.files['frame']
+#         np_img = np.frombuffer(file.read(), np.uint8)
+#         img = cv2.imdecode(np_img, cv2.IMREAD_COLOR)
+#         emotion = detect_emotion(img)
+#         return jsonify({'emotion': emotion})
+#     return jsonify({'error': 'No frame received'}), 400
+
+# @app.route('/audio-transcription', methods=['POST'])
+# def audio_transcription():
+#     if 'audio' in request.files:
+#         audio_file = request.files['audio']
+#         audio_data = audio_file.read()
+#         transcription = transcribe_audio(audio_data)
+#         emotion = detect_audio_emotion(transcription)
+#         return jsonify({'transcription': transcription, 'emotion': emotion})
+#     return jsonify({'error': 'No audio received'}), 400
+
+# if __name__ == '__main__':
+#     app.run(host='0.0.0.0', port=5000)
+
+
+#--------------------------------------------------------------------------------------------
+
+# # backend/app.py
+#_______________________________________________working gooood _______________#
+import sys
+import os
+import gc
+stop_recording = False
+import nltk
+nltk.download('punkt')
+import speech_recognition as sr
+import time
+import threading
+from nltk.tokenize import sent_tokenize
+from sumy.parsers.plaintext import PlaintextParser
+from sumy.nlp.tokenizers import Tokenizer
+from sumy.summarizers.lsa import LsaSummarizer
+from summarizer import Summarizer
+
+# Now import torch from the specified directory
+import torch
+
+# Verify the import by checking the version
+print(torch.__version__)
+
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import cv2
+import numpy as np
+import source.face_emotion_utils.predict as video_emotion_detection
+import source.face_emotion_utils.utils as face_utilities
+import source.config as config
+
+app = Flask(__name__)
+CORS(app)
+def convert_float32(data):
+    if isinstance(data, np.float32):
+        return float(data)
+    elif isinstance(data, np.ndarray):
+        return data.tolist()
+    elif isinstance(data, dict):
+        return {key: convert_float32(value) for key, value in data.items()}
+    elif isinstance(data, list):
+        return [convert_float32(element) for element in data]
+    elif isinstance(data, tuple):
+        return tuple(convert_float32(element) for element in data)
+    else:
+        return data
+import os
+
+def detect_emotion(frame):
+    # Placeholder for your emotion detection logic
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    face_model_path = config.FACE_MODEL_SAVE_PATH
+    best_hyperparameters_path=config.FACE_BEST_HP_JSON_SAVE_PATH
+
+    best_hyperparameters = face_utilities.load_dict_from_json(best_hyperparameters_path)
+
+
+    model = torch.load(face_model_path)
+    model.to(device).eval()
+  
+    return_obj = video_emotion_detection._get_prediction(best_hp=best_hyperparameters,
+                        img=frame,
+                        model=model,
+                        imshow=True,
+                        video_mode=True,
+                        verbose=True,
+                        grad_cam=False,
+                        grad_cam_on_video=False,
+                        feature_maps_flag=False)
+    return convert_float32(return_obj)
+    # if type(frame) == str:
+    #         frame = cv2.imread(frame)
+    #         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    # verbose=True
+    # result = video_emotion_detection._get_prediction(best_hp=best_hyperparameters, img=frame, model=model, imshow=True, video_mode=False, verbose=True, grad_cam=True)
+
+    # if verbose:
+    #     print("\n\n\nResults:")
+    #     for res in result:
+    #             # check if numpy
+    #             if type(res) == np.ndarray:
+    #                 print(res.shape)
+    #             else:
+    #                 print(res)
+
+    #     return result
+
+
+# Call detect_emotion function here...
+
+
+# def transcribe_audio(audio_data):
+
+#     global stop_recording
+    
+#     # Transcribe audio
+#     recognizer = sr.Recognizer()
+#     with sr.Microphone() as source:
+#         recognizer.adjust_for_ambient_noise(source)
+#         print("Please say something...")
+
+#         recording = []  # to store the chunks of audio
+
+#         # Start recording
+#         while not stop_recording:
+#             audio_chunk = recognizer.listen(source)
+#             recording.append(audio_chunk)
+#             print("Recording... Press 'q' to stop.")
+
+#         print("Processing now...")
+
+#         # Combine all the audio chunks into a single audio
+#         frames = [chunk.frame_data for chunk in recording]
+#         audio = b"".join(frames)
+        
+#         # Get the microphone sample rate from the first audio chunk
+#         sample_rate = recording[0].sample_rate
+#         # Get the sample width from the first audio chunk
+#         sample_width = recording[0].sample_width
+        
+#         audio = sr.AudioData(audio, sample_rate=sample_rate, sample_width=sample_width)
+
+#         try:
+#             text = recognizer.recognize_google(audio)
+#             print("Audio transcribed successfully.")
+#         except sr.UnknownValueError:
+#             print("Sorry, I could not understand audio.")
+#             return
+#         except sr.RequestError as e:
+#             print("Error: Could not request results; {0}".format(e))
+#             return
+
+#     # Tokenize the transcribed text into sentences
+#     sentences = sent_tokenize(text)
+
+#     # Summarize the transcribed text with the new method
+#     model = Summarizer()
+#     summary = model(text, ratio=0.2)
+
+#     # Save the summarized text to a file
+#     with open("summarized_text.txt", "w") as file:
+#         file.write(summary)
+
+#     print("Summarized text saved to 'summarized_text.txt'")
+
+# # Function to stop recording when 'q' key is pressed
+# def stop_recording_on_q():
+#     global stop_recording
+#     input("Press Enter to start recording...")
+#     print("Press 'q' to stop recording.")
+#     while True:
+#         if input() == 'q':
+#             stop_recording = True
+#             break
+
+# # Create a thread to handle stopping the recording
+# threading.Thread(target=stop_recording_on_q).start()
+
+# # Call the function to transcribe and summarize
+
+# def detect_audio_emotion(transcription):
+#     # Placeholder for your audio emotion detection logic
+#     return "neutral"
+
+@app.route('/emotion-detection', methods=['POST'])
+# working fine above code 
+
+def emotion_detection():
+    if 'frame' in request.files:
+         file = request.files['frame']
+         np_img = np.frombuffer(file.read(), np.uint8)
+         img = cv2.imdecode(np_img, cv2.IMREAD_COLOR)
+         emotion = detect_emotion(img)
+         print("Emotion object type:", type(emotion))
+ 
+         del np_img
+         del img
+         gc.collect()  # Perform garbage collection
+         return jsonify({'emotion': emotion})
+    return jsonify({'error': 'No frame received'}), 400
+
+# working fine above code 1st one
+# @app.route('/audio-transcription', methods=['POST'])
+# def audio_transcription():
+#     transcription = transcribe_audio()
+#     emotion = detect_audio_emotion(transcription)
+#     return jsonify({'transcription': transcription, 'emotion': emotion})
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=500)
+
+
+# end goood ---------------------------------------------------------------------------------------------------------
+
+
+# # --------------------chat gpt new___________________
+# import sys
+# import os
+# import gc
+# stop_recording = False
+# import nltk
+# nltk.download('punkt')
+# import speech_recognition as sr
+# import time
+# import threading
+# from nltk.tokenize import sent_tokenize
+# from sumy.parsers.plaintext import PlaintextParser
+# from sumy.nlp.tokenizers import Tokenizer
+# from sumy.summarizers.lsa import LsaSummarizer
+# from summarizer import Summarizer
+# import torch
+# import io
+# from pydub import AudioSegment
+# from flask import Flask, request, jsonify
+# from flask_cors import CORS
+# import cv2
+# import numpy as np
+# import source.face_emotion_utils.predict as video_emotion_detection
+# import source.face_emotion_utils.utils as face_utilities
+# import source.config as config
+
+# app = Flask(__name__)
+# CORS(app)
+
+# def convert_float32(data):
+#     if isinstance(data, np.float32):
+#         return float(data)
+#     elif isinstance(data, np.ndarray):
+#         return data.tolist()
+#     elif isinstance(data, dict):
+#         return {key: convert_float32(value) for key, value in data.items()}
+#     elif isinstance(data, list):
+#         return [convert_float32(element) for element in data]
+#     elif isinstance(data, tuple):
+#         return tuple(convert_float32(element) for element in data)
+#     else:
+#         return data
+
+# def detect_emotion(frame):
+#     device = 'cuda' if torch.cuda.is_available() else 'cpu'
+#     face_model_path = config.FACE_MODEL_SAVE_PATH
+#     best_hyperparameters_path = config.FACE_BEST_HP_JSON_SAVE_PATH
+
+#     best_hyperparameters = face_utilities.load_dict_from_json(best_hyperparameters_path)
+#     model = torch.load(face_model_path)
+#     model.to(device).eval()
+
+#     return_obj = video_emotion_detection._get_prediction(best_hp=best_hyperparameters,
+#                         img=frame,
+#                         model=model,
+#                         imshow=True,
+#                         video_mode=True,
+#                         verbose=True,
+#                         grad_cam=True,
+#                         grad_cam_on_video=False,
+#                         feature_maps_flag=False)
+#     return convert_float32(return_obj)
+
+# def transcribe_audio(audio_data):
+#     recognizer = sr.Recognizer()
+    
+#     try:
+#         audio = AudioSegment.from_file(audio_data)
+#         audio_chunks = sr.AudioFile(io.BytesIO(audio.raw_data))
+#     except Exception as e:
+#         print(f"Error processing audio file: {e}")
+#         return "Error processing audio file."
+
+#     with audio_chunks as source:
+#         recognizer.adjust_for_ambient_noise(source)
+#         audio_content = recognizer.record(source)
+    
+#     try:
+#         text = recognizer.recognize_google(audio_content)
+#         print("Audio transcribed successfully.")
+#     except sr.UnknownValueError:
+#         return "Sorry, I could not understand audio."
+#     except sr.RequestError as e:
+#         return f"Error: Could not request results; {e}"
+
+#     model = Summarizer()
+#     summary = model(text, ratio=0.2)
+    
+#     return summary
+
+# def detect_audio_emotion(transcription):
+#     return "neutral"  # Placeholder for your audio emotion detection logic
+
+# @app.route('/emotion-detection', methods=['POST'])
+# def emotion_detection():
+#     if 'frame' in request.files:
+#         file = request.files['frame']
+#         np_img = np.frombuffer(file.read(), np.uint8)
+#         img = cv2.imdecode(np_img, cv2.IMREAD_COLOR)
+#         emotion = detect_emotion(img)
+#         print("Emotion object type:", type(emotion))
+
+#         del np_img
+#         del img
+#         gc.collect()  # Perform garbage collection
+#         return jsonify({'emotion': emotion})
+#     return jsonify({'error': 'No frame received'}), 400
+
+# @app.route('/audio-transcription', methods=['POST'])
+# def audio_transcription():
+#     if 'audio' not in request.files:
+#         app.logger.error("No audio file provided in request")
+#         return 'No  audio'
+#         return jsonify({"error": "No audio file provided"}), 400
+
+#     audio_file = request.files['audio']
+#     audio_data = io.BytesIO(audio_file.read())
+    
+#     try:
+#         transcription = transcribe_audio(audio_data)
+#         emotion = detect_audio_emotion(transcription)
+#         return 'Hello'
+#         # return jsonify({'transcription': transcription, 'emotion': emotion})
+#     except Exception as e:
+#         app.logger.error(f"Error in processing audio: {e}")
+#         # return jsonify({"error": "Error in processing audio"}), 500
+#         return 'Error'
+
+
+# if __name__ == '__main__':
+#     app.run(host='0.0.0.0', port=5000)
